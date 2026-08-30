@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "623687909625",
+    "project_id": "referee-schedule-87697",
+    "storage_bucket": "referee-schedule-87697.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:623687909625:android:fcf059b9c4385526cea228",
+        "android_client_info": {
+          "package_name": "com.google.refereeschedule"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCuE8-me0wGJ7JuqElyYcto2W-nkWnyxtE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
