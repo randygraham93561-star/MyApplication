@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.Flow
 
 interface OrganizationRepository {
     fun getOrganizationsFlow(): Flow<List<Organization>>
+    fun getOrganizationFlow(id: String): Flow<Organization?>
     suspend fun getOrganization(id: String): Organization?
     suspend fun saveOrganization(organization: Organization)
     suspend fun deleteOrganization(id: String)

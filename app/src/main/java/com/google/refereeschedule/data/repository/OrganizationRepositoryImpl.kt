@@ -17,14 +17,21 @@ class OrganizationRepositoryImpl @Inject constructor(
 
     override fun getOrganizationsFlow(): Flow<List<Organization>> {
         return organizationsCollection.snapshots().map { snapshot ->
-            snapshot.toObjects(Organization::class.java)
+            snapshot.documents.mapNotNull { it.toObject(Organization::class.java)?.copy(id = it.id) }
+        }
+    }
+
+    override fun getOrganizationFlow(id: String): Flow<Organization?> {
+        return organizationsCollection.document(id).snapshots().map { snapshot ->
+            snapshot.toObject(Organization::class.java)?.copy(id = snapshot.id)
         }
     }
 
     override suspend fun getOrganization(id: String): Organization? {
         if (id.isEmpty()) return null
         return try {
-            organizationsCollection.document(id).get().await().toObject(Organization::class.java)
+            val doc = organizationsCollection.document(id).get().await()
+            doc.toObject(Organization::class.java)?.copy(id = doc.id)
         } catch (e: Exception) {
             null
         }

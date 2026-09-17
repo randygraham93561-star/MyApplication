@@ -3,6 +3,7 @@ package com.google.refereeschedule.data.repository
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.snapshots
 import com.google.refereeschedule.data.local.dao.GameDao
+import com.google.refereeschedule.data.local.entity.GameEntity
 import com.google.refereeschedule.data.local.entity.toDomain
 import com.google.refereeschedule.data.local.entity.toEntity
 import com.google.refereeschedule.domain.model.Game
@@ -11,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 
@@ -86,6 +88,22 @@ class GameRepositoryImpl @Inject constructor(
             // but we also want it in Room immediately.
         }
         gameDao.insertGames(listOf(gameToSave.toEntity()))
+    }
+
+    override suspend fun bulkSaveGames(games: List<Game>) {
+        val entities = mutableListOf<GameEntity>()
+        
+        firestore.runBatch { batch ->
+            games.forEach { game ->
+                val docRef = if (game.id.isEmpty()) gamesCollection.document() else gamesCollection.document(game.id)
+                val finalGame = if (game.id.isEmpty()) game.copy(id = docRef.id) else game
+                batch.set(docRef, finalGame)
+                entities.add(finalGame.toEntity())
+            }
+        }.await()
+        
+        // Update local Room database after cloud batch succeeds
+        gameDao.insertGames(entities)
     }
 
     override suspend fun deleteGame(id: String) {

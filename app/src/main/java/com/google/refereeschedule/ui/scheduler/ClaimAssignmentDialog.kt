@@ -3,6 +3,7 @@ package com.google.refereeschedule.ui.scheduler
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.google.refereeschedule.domain.model.Assignment
@@ -18,7 +19,9 @@ fun ClaimAssignmentDialog(
     viewModel: ClaimAssignmentViewModel,
     onDismiss: () -> Unit
 ) {
-    var selectedPosition by remember { mutableStateOf(AssignmentPosition.AssistantReferee) }
+    var selectedPosition by remember { 
+        mutableStateOf(if (referee.isMentor && game.isMentorRequested) AssignmentPosition.Mentor else AssignmentPosition.AssistantReferee) 
+    }
     var mentorRequested by remember { mutableStateOf(false) }
     var validationResult by remember { mutableStateOf<ClaimValidationResult?>(null) }
     val coroutineScope = rememberCoroutineScope()
@@ -48,6 +51,15 @@ fun ClaimAssignmentDialog(
                             onClick = { selectedPosition = AssignmentPosition.AssistantReferee }
                         )
                         Text("Assistant")
+                    }
+                    if (referee.isMentor || game.isMentorRequested) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(
+                                selected = selectedPosition == AssignmentPosition.Mentor,
+                                onClick = { selectedPosition = AssignmentPosition.Mentor }
+                            )
+                            Text("Mentor")
+                        }
                     }
                 }
 

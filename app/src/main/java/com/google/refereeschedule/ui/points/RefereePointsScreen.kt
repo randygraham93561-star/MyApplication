@@ -11,26 +11,22 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RefereePointsScreen(
-    viewModel: RefereePointsViewModel,
-    onOpenDrawer: () -> Unit
+    viewModel: RefereePointsViewModel
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("League Standings") },
-                navigationIcon = {
-                    IconButton(onClick = onOpenDrawer) {
-                        Icon(Icons.Rounded.Menu, contentDescription = "Menu")
-                    }
-                }
+                title = { Text("League Standings") }
             )
         }
     ) { padding ->
@@ -46,6 +42,20 @@ fun RefereePointsScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                item {
+                    uiState.organization?.logoUrl?.let { logo ->
+                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            AsyncImage(
+                                model = logo,
+                                contentDescription = "League Logo",
+                                modifier = Modifier.height(60.dp).fillMaxWidth(0.5f),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
+                        Spacer(Modifier.height(16.dp))
+                    }
+                }
+                
                 // Unassigned Points Card
                 item {
                     Card(

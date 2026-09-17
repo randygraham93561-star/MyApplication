@@ -13,9 +13,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.google.refereeschedule.domain.model.AssignmentPosition
+import com.google.refereeschedule.domain.model.GameStatus
 import com.google.refereeschedule.domain.model.PointDistributionMode
 import com.google.refereeschedule.domain.model.RefereeVerification
 import com.google.refereeschedule.domain.model.User
+import com.google.refereeschedule.util.TimeUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,12 +67,48 @@ fun MatchReportScreen(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                if (!viewModel.isSeasonLive) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = MaterialTheme.shapes.medium,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "READ-ONLY MODE: This game belongs to a past or draft season. Changes cannot be saved.",
+                            modifier = Modifier.padding(12.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+
+                if (game.status == GameStatus.NeedsRevision) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        shape = MaterialTheme.shapes.medium,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = "REVISION REQUESTED",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Text(
+                                text = "Admin Feedback: ${game.adminFeedback ?: "No feedback provided."}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+                }
+
                 Text(
                     text = "${game.homeTeamName} vs ${game.awayTeamName}",
                     style = MaterialTheme.typography.headlineSmall
                 )
                 Text(
-                    text = "${game.date} @ ${game.time}",
+                    text = "${game.date} @ ${TimeUtils.formatTo12h(game.time)}",
                     style = MaterialTheme.typography.bodyMedium
                 )
 
@@ -141,6 +179,31 @@ fun MatchReportScreen(
                 HorizontalDivider()
 
                 Text("Referee Verification", style = MaterialTheme.typography.titleMedium)
+
+                // Dual Center Option (Only if exactly 2 referees are present)
+                val presentCount = viewModel.refereeVerifications.values.count { it.isPresent }
+                if (presentCount == 2) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = viewModel.isDualCenter,
+                            onCheckedChange = { viewModel.isDualCenter = it }
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text("Performed Dual Center?", style = MaterialTheme.typography.bodyMedium)
+                            Text("Both referees will earn 2 points and be credited as Head Referees.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                        }
+                    }
+                } else if (viewModel.isDualCenter) {
+                    // Reset if count changes
+                    LaunchedEffect(presentCount) {
+                        viewModel.isDualCenter = false
+                    }
+                }
+
                 viewModel.assignedReferees.forEach { (assignment, user) ->
                     val verification = viewModel.refereeVerifications[user.id]
                     RefereeVerificationCard(
@@ -191,7 +254,7 @@ fun MatchReportScreen(
                 Button(
                     onClick = { viewModel.submitReport(onNavigateBack) },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = !viewModel.isSubmitting
+                    enabled = !viewModel.isSubmitting && viewModel.isSeasonLive
                 ) {
                     if (viewModel.isSubmitting) {
                         CircularProgressIndicator(

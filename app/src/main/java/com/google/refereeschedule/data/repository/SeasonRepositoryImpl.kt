@@ -17,7 +17,7 @@ class SeasonRepositoryImpl @Inject constructor(
 
     override suspend fun getActiveSeason(): Season? {
         return try {
-            seasonsCollection.whereEqualTo("isActive", true)
+            seasonsCollection.whereEqualTo("active", true)
                 .get()
                 .await()
                 .documents
@@ -59,5 +59,10 @@ class SeasonRepositoryImpl @Inject constructor(
         } else {
             seasonsCollection.document(season.id).set(season).await()
         }
+    }
+
+    override suspend fun deleteSeason(id: String) {
+        if (id.isEmpty()) return
+        seasonsCollection.document(id).delete().await()
     }
 }

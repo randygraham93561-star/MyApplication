@@ -9,4 +9,5 @@ interface ProfileRepository {
     fun getProfileFlow(id: String): Flow<RefereeProfile?>
     fun getProfilesForOrganizationFlow(organizationId: String): Flow<List<RefereeProfile>>
     suspend fun updatePoints(id: String, pointsToAdd: Int)
+    fun getAllProfilesFlow(): Flow<List<RefereeProfile>>
 }

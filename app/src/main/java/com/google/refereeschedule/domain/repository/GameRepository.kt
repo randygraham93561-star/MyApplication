@@ -9,5 +9,6 @@ interface GameRepository {
     suspend fun getLatestGameNumber(seasonId: String): Int
     suspend fun getGame(id: String): Game?
     suspend fun saveGame(game: Game)
+    suspend fun bulkSaveGames(games: List<Game>)
     suspend fun deleteGame(id: String)
 }

@@ -47,6 +47,14 @@ class ProfileRepositoryImpl @Inject constructor(
             }
     }
 
+    override fun getAllProfilesFlow(): Flow<List<RefereeProfile>> {
+        return profilesCollection.snapshots().map { snapshot ->
+            snapshot.documents.mapNotNull { doc ->
+                doc.toObject(RefereeProfile::class.java)?.copy(id = doc.id)
+            }
+        }
+    }
+
     override suspend fun updatePoints(id: String, pointsToAdd: Int) {
         val profile = getProfile(id)
         if (profile != null) {

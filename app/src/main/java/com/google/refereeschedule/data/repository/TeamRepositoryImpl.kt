@@ -15,7 +15,7 @@ class TeamRepositoryImpl @Inject constructor(
 ) : TeamRepository {
 
     private val teamsCollection = firestore.collection("teams")
-    private val awardsCollection = firestore.collection("point_awards")
+    private val awardsCollection = firestore.collection("referee_points")
 
     override suspend fun getTeam(id: String): Team? {
         return try {
@@ -64,21 +64,34 @@ class TeamRepositoryImpl @Inject constructor(
     }
 
     override suspend fun awardPoints(award: PointAward) {
-        // Prevent duplicate awards for this specific team/game/referee combo
+        // 1. Prevent duplicate awards for this specific team/game/referee combo
         if (hasBeenAwarded(award.gameId, award.refereeId, award.teamId)) return
+        
+        // 2. Enforce the 2-point weekly cap
+        val currentWeeklyPoints = getPointsForTeamOnWeekend(award.teamId, award.seasonId, award.timestamp)
+        if (currentWeeklyPoints >= 2) return // Already at the 2-point max for the week
 
         val docRef = awardsCollection.document()
         val finalAward = award.copy(id = docRef.id)
         
         firestore.runTransaction { transaction ->
-            // 1. Create the award record
+            // 1. All READS must happen first
+            var currentPoints = 0
+            val isAssigned = (award.teamId != "unassigned") && award.teamId.isNotEmpty()
+            
+            if (isAssigned) {
+                val teamRef = teamsCollection.document(award.teamId)
+                val teamSnap = transaction.get(teamRef)
+                currentPoints = (teamSnap.get("totalPoints") as? Number)?.toInt() ?: 0
+            }
+
+            // 2. All WRITES must happen after reads
+            // Create the award record (Central Ledger)
             transaction.set(docRef, finalAward)
             
-            // 2. Update the team's total points (skip if unassigned)
-            if (award.teamId != "unassigned" && award.teamId.isNotEmpty()) {
+            // Update the team's total points
+            if (isAssigned) {
                 val teamRef = teamsCollection.document(award.teamId)
-                    val teamSnap = transaction.get(teamRef)
-                val currentPoints = (teamSnap.get("totalPoints") as? Number)?.toInt() ?: 0
                 transaction.update(teamRef, "totalPoints", currentPoints + award.points)
             }
         }.await()
@@ -133,8 +146,9 @@ class TeamRepositoryImpl @Inject constructor(
         }
     }
 
-    override fun getUnassignedPointsFlow(organizationId: String): Flow<Int> {
+    override fun getUnassignedPointsFlow(organizationId: String, seasonId: String): Flow<Int> {
         return awardsCollection.whereEqualTo("organizationId", organizationId)
+            .whereEqualTo("seasonId", seasonId)
             .whereEqualTo("teamId", "unassigned")
             .snapshots()
             .map { snapshot ->
@@ -142,8 +156,9 @@ class TeamRepositoryImpl @Inject constructor(
             }
     }
 
-    override fun getPointAwardsForOrganizationFlow(organizationId: String): Flow<List<PointAward>> {
+    override fun getPointAwardsForOrganizationFlow(organizationId: String, seasonId: String): Flow<List<PointAward>> {
         return awardsCollection.whereEqualTo("organizationId", organizationId)
+            .whereEqualTo("seasonId", seasonId)
             .snapshots()
             .map { snapshot ->
                 snapshot.documents.mapNotNull { it.toObject(PointAward::class.java)?.copy(id = it.id) }

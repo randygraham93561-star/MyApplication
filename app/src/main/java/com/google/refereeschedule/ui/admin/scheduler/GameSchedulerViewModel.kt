@@ -10,16 +10,19 @@ import com.google.refereeschedule.domain.model.BulkGameData
 import com.google.refereeschedule.domain.model.Division
 import com.google.refereeschedule.domain.model.DivisionDifficulty
 import com.google.refereeschedule.domain.model.Game
+import com.google.refereeschedule.domain.model.Organization
 import com.google.refereeschedule.domain.model.Season
 import com.google.refereeschedule.domain.model.Team
 import com.google.refereeschedule.domain.repository.AssignmentRepository
 import com.google.refereeschedule.domain.repository.GameRepository
+import com.google.refereeschedule.domain.repository.OrganizationRepository
 import com.google.refereeschedule.domain.repository.SeasonRepository
 import com.google.refereeschedule.domain.repository.TeamRepository
 import com.google.refereeschedule.domain.repository.UserRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
 
@@ -31,6 +34,7 @@ data class GameSchedulerUiState(
     val teamsInDivision: List<Team> = emptyList(),
     val gamesOnSelectedDate: List<Game> = emptyList(),
     val allReferees: List<com.google.refereeschedule.domain.model.User> = emptyList(),
+    val organization: Organization? = null,
     val isLoading: Boolean = true
 )
 
@@ -41,11 +45,14 @@ class GameSchedulerViewModel @Inject constructor(
     private val seasonRepository: SeasonRepository,
     private val teamRepository: TeamRepository,
     private val gameRepository: GameRepository,
-    private val assignmentRepository: AssignmentRepository
+    private val assignmentRepository: AssignmentRepository,
+    private val organizationRepository: OrganizationRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(GameSchedulerUiState())
     val uiState: StateFlow<GameSchedulerUiState> = _uiState.asStateFlow()
+
+    private val _organization = MutableStateFlow<Organization?>(null)
     
     val allAssignments = assignmentRepository.getAllAssignmentsFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -62,9 +69,13 @@ class GameSchedulerViewModel @Inject constructor(
             val user = userRepository.getUser(uid)
             val orgId = user?.organizationId ?: return@launch
 
+            val org = organizationRepository.getOrganization(orgId)
+            _organization.value = org
+            _uiState.update { it.copy(organization = org) }
+
             seasonRepository.getSeasonsForOrganizationFlow(orgId)
                 .onEach { seasons ->
-                    val activeSeason = seasons.find { it.isActive }
+                    val activeSeason = seasons.find { it.active }
                     _uiState.update { it.copy(
                         seasons = seasons,
                         selectedSeason = activeSeason,
@@ -84,6 +95,7 @@ class GameSchedulerViewModel @Inject constructor(
 
     private fun loadTeamsAndGames(season: Season) {
         val division = _uiState.value.selectedDivision ?: return
+        val tz = TimeZone.getTimeZone(_organization.value?.timeZone ?: "UTC")
         
         teamRepository.getTeamsForSeasonFlow(season.id)
             .onEach { teams ->
@@ -93,11 +105,12 @@ class GameSchedulerViewModel @Inject constructor(
 
         gameRepository.getGamesForOrganizationFlow(season.organizationId)
             .onEach { games ->
-                val dateStr = formatDate(_uiState.value.selectedDate)
-                val filteredGames = games.filter { 
-                    it.seasonId == season.id && 
-                    it.divisionName == division.name &&
-                    formatDate(it.date) == dateStr
+                val dateStr = formatDate(_uiState.value.selectedDate, tz)
+                val filteredGames = games.filter { g ->
+                    val gameDate = g.date ?: return@filter false
+                    g.seasonId == season.id && 
+                    g.divisionName == division.name &&
+                    formatDate(gameDate, tz) == dateStr
                 }
                 _uiState.update { it.copy(gamesOnSelectedDate = filteredGames) }
             }.launchIn(viewModelScope)
@@ -123,6 +136,7 @@ class GameSchedulerViewModel @Inject constructor(
         time: String,
         location: String,
         fieldNumber: String,
+        gender: String,
         isFriendly: Boolean
     ) {
         viewModelScope.launch {
@@ -138,10 +152,13 @@ class GameSchedulerViewModel @Inject constructor(
                 location = location,
                 fieldNumber = fieldNumber,
                 divisionName = division.name,
+                gender = gender,
                 ageGroup = division.name,
                 homeTeamName = homeTeam.name,
+                homeTeamId = homeTeam.id,
                 awayTeamName = awayTeam.name,
-                difficultyLevel = DivisionDifficulty.getLevelForDivision(division.name),
+                awayTeamId = awayTeam.id,
+                difficultyLevel = DivisionDifficulty.getLevelForDivision(division.name, gender),
                 seasonId = season.id,
                 organizationId = season.organizationId,
                 mentorsAllowed = division.mentorsAllowed,
@@ -152,7 +169,7 @@ class GameSchedulerViewModel @Inject constructor(
         }
     }
 
-    fun createGames(games: List<BulkGameData>) {
+    fun createGames(games: List<BulkGameData>, gender: String) {
         viewModelScope.launch {
             val season = _uiState.value.selectedSeason ?: return@launch
             val division = _uiState.value.selectedDivision ?: return@launch
@@ -168,10 +185,13 @@ class GameSchedulerViewModel @Inject constructor(
                     location = data.location,
                     fieldNumber = data.fieldNumber,
                     divisionName = division.name,
+                    gender = gender,
                     ageGroup = division.name,
                     homeTeamName = data.homeTeam.name,
+                    homeTeamId = data.homeTeam.id,
                     awayTeamName = data.awayTeam.name,
-                    difficultyLevel = DivisionDifficulty.getLevelForDivision(division.name),
+                    awayTeamId = data.awayTeam.id,
+                    difficultyLevel = DivisionDifficulty.getLevelForDivision(division.name, gender),
                     seasonId = season.id,
                     organizationId = season.organizationId,
                     mentorsAllowed = division.mentorsAllowed,
@@ -230,20 +250,24 @@ class GameSchedulerViewModel @Inject constructor(
     }
 
     private fun parseGameDateTime(game: Game): Long? {
-        return try {
-            val dateStr = formatDate(game.date)
-            val fullStr = "$dateStr ${game.time}"
-            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale.getDefault())
-            sdf.timeZone = TimeZone.getTimeZone("UTC")
-            sdf.parse(fullStr)?.time
-        } catch (e: Exception) {
-            null
-        }
+        val gameDate = game.date ?: return null
+        val tz = TimeZone.getTimeZone(_organization.value?.timeZone ?: "UTC")
+        val dateStr = formatDate(gameDate, tz)
+        val fullStr = "$dateStr ${game.time}"
+        
+        // Try 24h format first (new standardized format)
+        val sdf24 = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).apply { timeZone = tz }
+        val time24 = try { sdf24.parse(fullStr)?.time } catch (e: Exception) { null }
+        if (time24 != null) return time24
+
+        // Fallback to 12h format (legacy data)
+        val sdf12 = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale.getDefault()).apply { timeZone = tz }
+        return try { sdf12.parse(fullStr)?.time } catch (e: Exception) { null }
     }
 
-    private fun formatDate(date: Date): String {
-        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-        sdf.timeZone = TimeZone.getTimeZone("UTC")
+    private fun formatDate(date: Date, tz: TimeZone = TimeZone.getTimeZone("UTC")): String {
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        sdf.timeZone = tz
         return sdf.format(date)
     }
 }

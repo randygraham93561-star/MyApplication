@@ -149,12 +149,12 @@ fun AddDivisionDialog(
     onDismiss: () -> Unit,
     onConfirm: (Division) -> Unit
 ) {
-    var difficultyIndex by remember { mutableStateOf(division?.difficultyLevel ?: 0) }
+    var name by remember { mutableStateOf(division?.name ?: "12U") }
     var players by remember { mutableStateOf(division?.playersPerTeam?.toString() ?: "11") }
     var duration by remember { mutableStateOf(division?.halfDurationMinutes?.toString() ?: "45") }
     var ballSize by remember { mutableStateOf(division?.ballSize?.toString() ?: "5") }
     
-    var difficultyExpanded by remember { mutableStateOf(false) }
+    var nameExpanded by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -162,25 +162,24 @@ fun AddDivisionDialog(
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 item {
-                    Text("Select Division Name (Comfort Level)", style = MaterialTheme.typography.labelMedium)
+                    Text("Select Division Name (Age Group)", style = MaterialTheme.typography.labelMedium)
                     ExposedDropdownMenuBox(
-                        expanded = difficultyExpanded,
-                        onExpandedChange = { difficultyExpanded = it }
+                        expanded = nameExpanded,
+                        onExpandedChange = { nameExpanded = it }
                     ) {
                         OutlinedTextField(
-                            value = DivisionDifficulty.headRefereeLevels[difficultyIndex],
-                            onValueChange = {},
-                            readOnly = true,
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = difficultyExpanded) },
-                            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
+                            value = name,
+                            onValueChange = { name = it },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = nameExpanded) },
+                            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryEditable).fillMaxWidth()
                         )
-                        ExposedDropdownMenu(expanded = difficultyExpanded, onDismissRequest = { difficultyExpanded = false }) {
-                            DivisionDifficulty.headRefereeLevels.forEachIndexed { index, name ->
+                        ExposedDropdownMenu(expanded = nameExpanded, onDismissRequest = { nameExpanded = false }) {
+                            DivisionDifficulty.ageGroups.forEach { option ->
                                 DropdownMenuItem(
-                                    text = { Text(name) },
+                                    text = { Text(option) },
                                     onClick = { 
-                                        difficultyIndex = index
-                                        difficultyExpanded = false 
+                                        name = option
+                                        nameExpanded = false 
                                     }
                                 )
                             }
@@ -224,8 +223,8 @@ fun AddDivisionDialog(
             Button(
                 onClick = {
                     onConfirm(Division(
-                        name = DivisionDifficulty.headRefereeLevels[difficultyIndex],
-                        difficultyLevel = difficultyIndex,
+                        name = name,
+                        difficultyLevel = DivisionDifficulty.getLevelForDivision(name, "Boys"), // Baseline
                         playersPerTeam = players.toIntOrNull() ?: 11,
                         halfDurationMinutes = duration.toIntOrNull() ?: 45,
                         ballSize = ballSize.toIntOrNull() ?: 5

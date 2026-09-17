@@ -9,4 +9,5 @@ interface SeasonRepository {
     fun getSeasonsFlow(): Flow<List<Season>>
     fun getSeasonsForOrganizationFlow(organizationId: String): Flow<List<Season>>
     suspend fun saveSeason(season: Season)
+    suspend fun deleteSeason(id: String)
 }

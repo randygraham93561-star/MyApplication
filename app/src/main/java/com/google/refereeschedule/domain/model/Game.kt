@@ -4,7 +4,7 @@ import com.google.firebase.firestore.PropertyName
 import java.util.Date
 
 enum class GameStatus {
-    Open, PartiallyFilled, Full, PendingReview, ReportApproved, Completed
+    Open, PartiallyFilled, Full, PendingReview, ReportApproved, Completed, NeedsRevision
 }
 
 data class RefereeVerification(
@@ -18,14 +18,17 @@ data class RefereeVerification(
 data class Game(
     val id: String = "",
     val gameNumber: Int = 0,
-    val date: Date = Date(),
+    val date: Date? = null,
     val time: String = "",
     val location: String = "",
     val fieldNumber: String = "",
     val ageGroup: String = "",
     val divisionName: String = "",
+    val gender: String = "Boys", // Boys, Girls, Coed
     val homeTeamName: String = "",
+    val homeTeamId: String = "",
     val awayTeamName: String = "",
+    val awayTeamId: String = "",
     val requiredCrewSize: Int = 0,
     val difficultyLevel: Int = 1,
     val seasonId: String = "",
@@ -38,7 +41,11 @@ data class Game(
     val cardTypes: String = "", // "Yellow", "Red", "Both"
     val disciplinaryDescription: String = "",
     val reporterSignature: String = "",
+    val adminFeedback: String? = null,
     val selectedTargetTeamId: String = "", // Persistent manual team choice for points
+    val isDualCenter: Boolean = false,
+    val mentorId: String? = null,
+    val isMentorRequested: Boolean = false,
     val refereeVerifications: List<RefereeVerification> = emptyList(),
     val reportSubmittedAt: Date? = null,
     val reportSubmittedBy: String? = null,

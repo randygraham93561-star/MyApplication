@@ -1,5 +1,6 @@
 package com.google.refereeschedule.data.repository
 
+import android.util.Log
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.snapshots
 import com.google.refereeschedule.domain.model.User
@@ -21,35 +22,72 @@ class UserRepositoryImpl @Inject constructor(
         return try {
             usersCollection.document(id).get().await().toObject(User::class.java)?.copy(id = id)
         } catch (e: Exception) {
+            // Log and return null instead of crashing
+            Log.e("UserRepository", "Error fetching user $id: ${e.message}")
             null
         }
     }
 
     override suspend fun saveUser(user: User) {
-        val userToSave = if (user.id.isEmpty()) {
-            val docRef = usersCollection.document()
-            user.copy(id = docRef.id)
+        // 1. Identify roles map (handling migration)
+        val rolesMap = if (user.roles.isEmpty() && user.legacyRole != null) {
+            mapOf("referee" to user.legacyRole!!)
+        } else if (user.roles.isNotEmpty()) {
+            user.roles
         } else {
-            user
+            mapOf("referee" to "Referee")
         }
-        usersCollection.document(userToSave.id).set(userToSave).await()
+
+        // 2. Clear legacy string and update roles map
+        val userToSave = user.copy(
+            roles = rolesMap,
+            legacyRole = null
+        )
+
+        // 3. Save
+        val finalUser = if (userToSave.id.isEmpty()) {
+            val docRef = usersCollection.document()
+            userToSave.copy(id = docRef.id)
+        } else {
+            userToSave
+        }
+        usersCollection.document(finalUser.id).set(finalUser).await()
     }
 
     override suspend fun saveUserWithReturn(user: User): String {
-        val userToSave = if (user.id.isEmpty()) {
-            val docRef = usersCollection.document()
-            user.copy(id = docRef.id)
+        val rolesMap = if (user.roles.isEmpty() && user.legacyRole != null) {
+            mapOf("referee" to user.legacyRole!!)
+        } else if (user.roles.isNotEmpty()) {
+            user.roles
         } else {
-            user
+            mapOf("referee" to "Referee")
         }
-        usersCollection.document(userToSave.id).set(userToSave).await()
-        return userToSave.id
+
+        val userToSave = user.copy(
+            roles = rolesMap,
+            legacyRole = null
+        )
+
+        val finalUser = if (userToSave.id.isEmpty()) {
+            val docRef = usersCollection.document()
+            userToSave.copy(id = docRef.id)
+        } else {
+            userToSave
+        }
+        usersCollection.document(finalUser.id).set(finalUser).await()
+        return finalUser.id
     }
 
     override fun getUserFlow(id: String): Flow<User?> {
         if (id.isEmpty()) return flowOf(null)
         return usersCollection.document(id).snapshots().map { snapshot ->
-            snapshot.toObject(User::class.java)?.copy(id = id)
+            try {
+                snapshot.toObject(User::class.java)?.copy(id = id)
+            } catch (e: Exception) {
+                // If the document is fundamentally broken, return null instead of crashing the app
+                Log.e("UserRepository", "Error deserializing user $id: ${e.message}")
+                null
+            }
         }
     }
 
@@ -58,7 +96,11 @@ class UserRepositoryImpl @Inject constructor(
             .snapshots()
             .map { snapshot ->
                 snapshot.documents.mapNotNull { doc ->
-                    doc.toObject(User::class.java)?.copy(id = doc.id)
+                    try {
+                        doc.toObject(User::class.java)?.copy(id = doc.id)
+                    } catch (e: Exception) {
+                        null
+                    }
                 }
             }
     }
@@ -66,7 +108,11 @@ class UserRepositoryImpl @Inject constructor(
     override fun getAllUsersFlow(): Flow<List<User>> {
         return usersCollection.snapshots().map { snapshot ->
             snapshot.documents.mapNotNull { doc ->
-                doc.toObject(User::class.java)?.copy(id = doc.id)
+                try {
+                    doc.toObject(User::class.java)?.copy(id = doc.id)
+                } catch (e: Exception) {
+                    null
+                }
             }
         }
     }

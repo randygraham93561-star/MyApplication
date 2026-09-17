@@ -5,6 +5,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.HelpOutline
+import androidx.compose.material.icons.rounded.Cake
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Person
@@ -20,12 +21,15 @@ import com.google.refereeschedule.domain.model.DivisionDifficulty
 import com.google.refereeschedule.domain.model.PointDistributionMode
 import com.google.refereeschedule.domain.model.RefereeProfile
 import com.google.refereeschedule.ui.theme.MyApplicationTheme
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
     viewModel: ProfileViewModel,
-    onOpenDrawer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -33,12 +37,7 @@ fun ProfileScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Profile") },
-                navigationIcon = {
-                    IconButton(onClick = onOpenDrawer) {
-                        Icon(Icons.Rounded.Menu, contentDescription = "Menu")
-                    }
-                }
+                title = { Text("Profile") }
             )
         }
     ) { padding ->
@@ -80,6 +79,7 @@ fun ProfileContent(
 ) {
     var name by remember { mutableStateOf(profile.name) }
     var phone by remember { mutableStateOf(profile.phoneNumber) }
+    var dateOfBirth by remember { mutableStateOf(profile.dateOfBirth) }
     var selectedOrgId by remember { mutableStateOf(profile.organizationId) }
     var selectedSeasonId by remember { mutableStateOf(profile.currentSeasonId) }
     var headComfort by remember { mutableFloatStateOf(profile.headRefereeComfortLevel.toFloat()) }
@@ -90,6 +90,8 @@ fun ProfileContent(
     var teamExpanded by remember { mutableStateOf(false) }
     var orgExpanded by remember { mutableStateOf(false) }
     var seasonExpanded by remember { mutableStateOf(false) }
+    var showDobPicker by remember { mutableStateOf(false) }
+    val dobState = rememberDatePickerState(initialSelectedDateMillis = dateOfBirth?.time)
 
     val minLevel = remember(profile.badgeLevel) {
         DivisionDifficulty.getMinLevelForBadge(profile.badgeLevel)
@@ -132,6 +134,35 @@ fun ProfileContent(
             leadingIcon = { Icon(Icons.Rounded.Phone, contentDescription = null) },
             modifier = Modifier.fillMaxWidth()
         )
+
+        OutlinedButton(
+            onClick = { showDobPicker = true },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            val dobStr = dateOfBirth?.let { 
+                SimpleDateFormat("MMM dd, yyyy", Locale.US).apply {
+                    timeZone = TimeZone.getTimeZone("UTC")
+                }.format(it) 
+            } ?: "Select Date of Birth"
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Icon(Icons.Rounded.Cake, contentDescription = null, modifier = Modifier.size(20.dp))
+                Text(dobStr)
+            }
+        }
+
+        if (showDobPicker) {
+            DatePickerDialog(
+                onDismissRequest = { showDobPicker = false },
+                confirmButton = {
+                    TextButton(onClick = {
+                        dateOfBirth = dobState.selectedDateMillis?.let { Date(it) }
+                        showDobPicker = false
+                    }) { Text("OK") }
+                }
+            ) {
+                DatePicker(state = dobState)
+            }
+        }
 
         HorizontalDivider()
 
@@ -290,7 +321,7 @@ fun ProfileContent(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = team?.let { "${it.name} (${it.divisionName})" } ?: "Unknown Team",
+                        text = team?.let { "${it.name} (${it.divisionName} ${it.gender})" } ?: "Unknown Team",
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.weight(1f)
                     )
@@ -322,7 +353,7 @@ fun ProfileContent(
                         } else {
                             availableTeams.forEach { team ->
                                 DropdownMenuItem(
-                                    text = { Text("${team.name} (${team.divisionName})") },
+                                    text = { Text("${team.name} (${team.divisionName} ${team.gender})") },
                                     onClick = {
                                         selectedTeamIds = selectedTeamIds + team.id
                                         teamExpanded = false
@@ -365,7 +396,7 @@ fun ProfileContent(
                     ) {
                         Column {
                             Text(team.name, style = MaterialTheme.typography.bodyLarge)
-                            Text(team.divisionName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                            Text("${team.divisionName} ${team.gender}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
                         }
                         Surface(
                             color = MaterialTheme.colorScheme.primaryContainer,
@@ -435,6 +466,7 @@ fun ProfileContent(
                 onSave(profile.copy(
                     name = name,
                     phoneNumber = phone,
+                    dateOfBirth = dateOfBirth,
                     organizationId = selectedOrgId,
                     currentSeasonId = selectedSeasonId,
                     headRefereeComfortLevel = headComfort.toInt(),

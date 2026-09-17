@@ -43,7 +43,7 @@ class DivisionManagementViewModel @Inject constructor(
                 .onEach { seasons ->
                     val currentSelectedId = _uiState.value.selectedSeason?.id
                     val updatedSelected = seasons.find { it.id == currentSelectedId }
-                        ?: seasons.find { it.isActive }
+                        ?: seasons.find { it.active }
                         ?: seasons.firstOrNull()
 
                     _uiState.update { it.copy(

@@ -13,8 +13,8 @@ interface TeamRepository {
     suspend fun awardPoints(award: PointAward)
     suspend fun hasBeenAwarded(gameId: String, refereeId: String, teamId: String): Boolean
     suspend fun getPointsForTeamOnWeekend(teamId: String, seasonId: String, date: java.util.Date): Int
-    fun getUnassignedPointsFlow(organizationId: String): Flow<Int>
-    fun getPointAwardsForOrganizationFlow(organizationId: String): Flow<List<PointAward>>
+    fun getUnassignedPointsFlow(organizationId: String, seasonId: String): Flow<Int>
+    fun getPointAwardsForOrganizationFlow(organizationId: String, seasonId: String): Flow<List<PointAward>>
     fun getPointAwardsForRefereeFlow(refereeId: String): Flow<List<PointAward>>
     suspend fun deleteTeam(id: String)
 }

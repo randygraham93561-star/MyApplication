@@ -33,10 +33,14 @@ class MatchReportViewModel @Inject constructor(
     private val profileRepository: ProfileRepository,
     private val teamRepository: TeamRepository,
     private val userRepository: UserRepository,
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val seasonRepository: com.google.refereeschedule.domain.repository.SeasonRepository
 ) : ViewModel() {
 
     var game by mutableStateOf<Game?>(null)
+        private set
+
+    var isSeasonLive by mutableStateOf(true)
         private set
 
     var homeScore by mutableStateOf("")
@@ -49,6 +53,7 @@ class MatchReportViewModel @Inject constructor(
     var redCards by mutableStateOf(false)
     var disciplinaryDescription by mutableStateOf("")
     var signature by mutableStateOf("")
+    var isDualCenter by mutableStateOf(false)
     
     var refereeVerifications = mutableStateMapOf<String, RefereeVerification>()
     
@@ -81,24 +86,50 @@ class MatchReportViewModel @Inject constructor(
             
             // Load assigned referees
             if (foundGame != null) {
+                // Pre-fill fields if editing existing report
+                homeScore = foundGame.homeScore?.toString() ?: ""
+                awayScore = foundGame.awayScore?.toString() ?: ""
+                cards = foundGame.cards ?: ""
+                notes = foundGame.notes ?: ""
+                cardsShown = foundGame.cardsShown
+                yellowCards = foundGame.cardTypes.contains("Yellow")
+                redCards = foundGame.cardTypes.contains("Red")
+                disciplinaryDescription = foundGame.disciplinaryDescription
+                signature = foundGame.reporterSignature
+                isDualCenter = foundGame.isDualCenter
+                selectedTargetTeamId = foundGame.selectedTargetTeamId
+
+                // Check if season is live
+                val season = seasonRepository.getAllSeasons().find { it.id == foundGame.seasonId }
+                isSeasonLive = season?.live ?: false
+
                 val orgId = foundGame.organizationId
                 allOrganizationReferees = userRepository.getUsersForOrganizationFlow(orgId).first()
 
                 val assignments = assignmentRepository.getAssignmentsForGame(gameId).first()
                 val list = mutableListOf<Pair<Assignment, User>>()
+                
+                // Map existing verifications by referee ID for easier lookup
+                val existingVerifications = foundGame.refereeVerifications.associateBy { it.refereeId }
+
                 assignments.forEach { assignment ->
                     val user = userRepository.getUser(assignment.refereeId)
                     if (user != null) {
                         list.add(assignment to user)
-                        // Pre-fill verification
-                        // Default to Present for testing/ease, reporter can uncheck if they missed it
-                        refereeVerifications[assignment.refereeId] = RefereeVerification(
-                            refereeId = assignment.refereeId,
-                            isPresent = true, // Default to true so points flow by default
-                            correctRole = true,
-                            actualRefereeId = assignment.refereeId,
-                            actualRole = assignment.position
-                        )
+                        
+                        // Restore existing verification or use default
+                        val existing = existingVerifications[assignment.refereeId]
+                        if (existing != null) {
+                            refereeVerifications[assignment.refereeId] = existing
+                        } else {
+                            refereeVerifications[assignment.refereeId] = RefereeVerification(
+                                refereeId = assignment.refereeId,
+                                isPresent = true,
+                                correctRole = true,
+                                actualRefereeId = assignment.refereeId,
+                                actualRole = assignment.position
+                            )
+                        }
                     }
                 }
                 assignedReferees = list
@@ -123,6 +154,10 @@ class MatchReportViewModel @Inject constructor(
     }
 
     fun submitReport(onSuccess: () -> Unit) {
+        if (!isSeasonLive) {
+            submitError = "This season is read-only. Reports cannot be submitted."
+            return
+        }
         val currentGame = game ?: return
         val myUid = authRepository.currentUser?.uid ?: return
 
@@ -151,6 +186,7 @@ class MatchReportViewModel @Inject constructor(
                     disciplinaryDescription = disciplinaryDescription,
                     reporterSignature = signature,
                     selectedTargetTeamId = selectedTargetTeamId,
+                    isDualCenter = isDualCenter,
                     refereeVerifications = refereeVerifications.values.toList(),
                     reportSubmittedAt = Date(),
                     reportSubmittedBy = myUid

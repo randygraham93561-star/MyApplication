@@ -1,5 +1,6 @@
 package com.google.refereeschedule.ui.scheduler
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -9,10 +10,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.Chat
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.*
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
@@ -23,14 +27,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.google.refereeschedule.domain.model.Assignment
+import com.google.refereeschedule.domain.model.AssignmentPosition
 import com.google.refereeschedule.domain.model.Game
 import com.google.refereeschedule.domain.model.GameStatus
 import com.google.refereeschedule.domain.model.RefereeProfile
+import com.google.refereeschedule.domain.model.SubscriptionTier
 import com.google.refereeschedule.domain.model.User
+import com.google.refereeschedule.domain.model.UserRole
 import com.google.refereeschedule.ui.theme.MyApplicationTheme
+import com.google.refereeschedule.util.TimeUtils
 import com.google.refereeschedule.ui.theme.StatusCompleted
 import com.google.refereeschedule.ui.theme.StatusFull
 import com.google.refereeschedule.ui.theme.StatusOpen
@@ -44,7 +53,9 @@ import java.util.*
 fun SchedulerScreen(
     viewModel: SchedulerViewModel,
     claimViewModel: ClaimAssignmentViewModel,
-    onOpenDrawer: () -> Unit,
+    userRole: UserRole,
+    activeTier: SubscriptionTier,
+    onNavigateToChat: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -52,6 +63,7 @@ fun SchedulerScreen(
     val currentUserProfile by viewModel.currentUserProfile.collectAsState()
     val allAssignments by viewModel.allAssignments.collectAsState()
     val allUsers by viewModel.allUsers.collectAsState()
+    val allProfiles by viewModel.allProfiles.collectAsState()
     val navigator = rememberListDetailPaneScaffoldNavigator<String>()
     val coroutineScope = rememberCoroutineScope()
     var showClaimDialog by remember { mutableStateOf<Game?>(null) }
@@ -71,12 +83,7 @@ fun SchedulerScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Available Games") },
-                navigationIcon = {
-                    IconButton(onClick = onOpenDrawer) {
-                        Icon(Icons.Rounded.Menu, contentDescription = "Menu")
-                    }
-                }
+                title = { Text("Available Games") }
             )
         }
     ) { padding ->
@@ -139,10 +146,20 @@ fun SchedulerScreen(
                                     game = game,
                                     crew = crew,
                                     allUsers = allUsers,
+                                    allProfiles = allProfiles,
                                     currentUserProfile = currentUserProfile,
-                                    onClaimClick = { showClaimDialog = game },
+                                    userRole = userRole,
+                                    activeTier = activeTier,
+                                    onClaimClick = { pos -> 
+                                        showClaimDialog = game 
+                                        // We can handle the specific position in the dialog
+                                    },
+                                    onChatClick = { onNavigateToChat(game.id) },
                                     onCancelAssignment = { assignmentId ->
                                         assignmentToDelete = assignmentId
+                                    },
+                                    onRequestMentor = {
+                                        viewModel.requestMentor(game.id)
                                     }
                                 )
                             } else {
@@ -222,8 +239,14 @@ fun GameList(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         items(games) { game ->
-            val isAssigned = assignments.any { it.gameId == game.id && it.refereeId == currentUserProfile?.id }
-            GameItem(game = game, isAssigned = isAssigned, onClick = { onGameClick(game) })
+            val gameAssignments = assignments.filter { it.gameId == game.id }
+            val isAssigned = gameAssignments.any { it.refereeId == currentUserProfile?.id }
+            GameItem(
+                game = game, 
+                isAssigned = isAssigned, 
+                crew = gameAssignments,
+                onClick = { onGameClick(game) }
+            )
         }
     }
 }
@@ -232,6 +255,7 @@ fun GameList(
 fun GameItem(
     game: Game,
     isAssigned: Boolean,
+    crew: List<Assignment>,
     onClick: () -> Unit
 ) {
     val statusColor = when (game.status) {
@@ -241,7 +265,18 @@ fun GameItem(
         GameStatus.PendingReview -> MaterialTheme.colorScheme.secondary
         GameStatus.ReportApproved -> MaterialTheme.colorScheme.tertiary
         GameStatus.Completed -> StatusCompleted
+        GameStatus.NeedsRevision -> MaterialTheme.colorScheme.error
     }
+
+    // Calculate available positions
+    val headTaken = crew.count { it.position == AssignmentPosition.HeadReferee }
+    val arTaken = crew.count { it.position == AssignmentPosition.AssistantReferee }
+    
+    val headRequired = if (game.isDualCenter) game.requiredCrewSize else 1
+    val arRequired = if (game.isDualCenter) 0 else (game.requiredCrewSize - 1)
+    
+    val headAvailable = (headRequired - headTaken).coerceAtLeast(0)
+    val arAvailable = (arRequired - arTaken).coerceAtLeast(0)
 
     Card(
         modifier = Modifier
@@ -282,6 +317,19 @@ fun GameItem(
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(text = game.location, style = MaterialTheme.typography.bodySmall)
                 }
+                
+                // Show available positions
+                if (game.status != GameStatus.Full && game.status != GameStatus.Completed && game.status != GameStatus.PendingReview && game.status != GameStatus.ReportApproved) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (headAvailable > 0) {
+                            PositionBadge("Head: $headAvailable", MaterialTheme.colorScheme.primary)
+                        }
+                        if (arAvailable > 0) {
+                            PositionBadge("AR: $arAvailable", MaterialTheme.colorScheme.secondary)
+                        }
+                    }
+                }
             }
             Surface(
                 shape = MaterialTheme.shapes.extraSmall,
@@ -289,7 +337,11 @@ fun GameItem(
                 contentColor = statusColor
             ) {
                 Text(
-                    text = game.status.name,
+                    text = if (game.status == GameStatus.Open || game.status == GameStatus.PartiallyFilled) {
+                        "${crew.size}/${game.requiredCrewSize} Refs"
+                    } else {
+                        game.status.name
+                    },
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.labelSmall
                 )
@@ -299,16 +351,49 @@ fun GameItem(
 }
 
 @Composable
+fun PositionBadge(text: String, color: Color) {
+    Surface(
+        shape = MaterialTheme.shapes.extraSmall,
+        color = color.copy(alpha = 0.1f),
+        contentColor = color,
+        border = BorderStroke(1.dp, color.copy(alpha = 0.5f))
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
 fun GameDetail(
     game: Game,
     crew: List<Assignment>,
     allUsers: List<User>,
+    allProfiles: List<RefereeProfile>,
     currentUserProfile: RefereeProfile?,
-    onClaimClick: () -> Unit,
-    onCancelAssignment: (String) -> Unit
+    userRole: UserRole = UserRole.Referee,
+    activeTier: SubscriptionTier = SubscriptionTier.Free,
+    onClaimClick: (AssignmentPosition) -> Unit,
+    onChatClick: () -> Unit,
+    onCancelAssignment: (String) -> Unit,
+    onRequestMentor: () -> Unit
 ) {
     val myAssignment = crew.find { it.refereeId == currentUserProfile?.id }
+    val isMentorUser = currentUserProfile?.isMentor == true
     val scrollState = rememberScrollState()
+
+    val isAdmin = userRole == UserRole.Admin || userRole == UserRole.SystemAdmin
+    val isToday = remember(game.date) {
+        val gameDate = game.date ?: Date()
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        sdf.timeZone = TimeZone.getTimeZone("UTC")
+        sdf.format(gameDate) == sdf.format(Date())
+    }
+    
+    val isStrict = activeTier != SubscriptionTier.Free
 
     Column(
         modifier = Modifier
@@ -335,41 +420,117 @@ fun GameDetail(
         InfoRow(
             icon = Icons.Rounded.Schedule,
             label = "Time",
-            value = game.time
+            value = TimeUtils.formatTo12h(game.time)
         )
 
         HorizontalDivider()
 
         Text(text = "Current Crew", style = MaterialTheme.typography.titleMedium)
-        if (crew.isEmpty()) {
+        if (crew.isEmpty() && game.mentorId == null) {
             Text("No referees assigned yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary)
         } else {
             crew.forEach { assignment ->
                 val user = allUsers.find { it.id == assignment.refereeId }
+                val profile = allProfiles.find { it.id == assignment.refereeId }
                 CrewMemberRow(
-                    email = user?.email ?: "Unknown Referee",
-                    position = assignment.position.name
+                    name = profile?.name ?: user?.email ?: "Unknown Referee",
+                    position = assignment.position.name,
+                    isYouth = profile?.isMinor ?: false
                 )
+            }
+            if (game.mentorId != null) {
+                val mentorUser = allUsers.find { it.id == game.mentorId }
+                val mentorProfile = allProfiles.find { it.id == game.mentorId }
+                CrewMemberRow(
+                    name = mentorProfile?.name ?: mentorUser?.email ?: "Mentor",
+                    position = "Mentor",
+                    isYouth = false
+                )
+            }
+        }
+
+        if (game.isMentorRequested && game.mentorId == null) {
+            Surface(
+                color = MaterialTheme.colorScheme.tertiaryContainer,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Rounded.Info, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer)
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        "A mentor has been requested for this game.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
             }
         }
 
         Spacer(modifier = Modifier.height(32.dp))
 
         if (myAssignment != null) {
+            // Already assigned
+            if (myAssignment.position == AssignmentPosition.HeadReferee && !game.isMentorRequested && game.mentorId == null) {
+                val isMentorEligibleGroup = game.ageGroup.contains("10U") || game.ageGroup.contains("12U")
+                if (isMentorEligibleGroup) {
+                    OutlinedButton(
+                        onClick = onRequestMentor,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Rounded.PersonAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Request a Mentor")
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+
             Button(
+                onClick = onChatClick,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Rounded.Chat, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Chat with Crew")
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedButton(
                 onClick = { onCancelAssignment(myAssignment.id) },
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
             ) {
                 Text("Cancel My Assignment")
             }
         } else {
-            Button(
-                onClick = onClaimClick,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = game.status != GameStatus.Full
-            ) {
-                Text("Claim Assignment")
+            // Not assigned
+            val canClaimStandard = game.status != GameStatus.Full
+            val canClaimMentor = (isMentorUser || isAdmin) && game.mentorId == null && (game.isMentorRequested || isAdmin)
+            
+            if (canClaimStandard) {
+                Button(
+                    onClick = { onClaimClick(AssignmentPosition.AssistantReferee) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = (!(isStrict && isToday) || isAdmin)
+                ) {
+                    Text(if (isStrict && isToday && !isAdmin) "Cannot Claim on Game Day" else "Claim Assignment")
+                }
+            }
+            
+            if (canClaimMentor) {
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = { onClaimClick(AssignmentPosition.Mentor) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                ) {
+                    Text("Claim as Mentor")
+                }
             }
         }
     }
@@ -396,8 +557,9 @@ fun InfoRow(
 
 @Composable
 fun CrewMemberRow(
-    email: String,
-    position: String
+    name: String,
+    position: String,
+    isYouth: Boolean
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -405,8 +567,23 @@ fun CrewMemberRow(
         horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Icon(Icons.Rounded.Person, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
-        Column {
-            Text(email, style = MaterialTheme.typography.bodyLarge)
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(name, style = MaterialTheme.typography.bodyLarge)
+                if (isYouth) {
+                    Spacer(Modifier.width(4.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.tertiaryContainer,
+                        shape = MaterialTheme.shapes.extraSmall
+                    ) {
+                        Text(
+                            text = "YOUTH",
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                }
+            }
             Text(position, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
         }
     }

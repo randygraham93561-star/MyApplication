@@ -18,14 +18,19 @@ data class Division(
 data class Season(
     val id: String = "",
     val name: String = "",
-    val startDate: Date = Date(),
-    val endDate: Date = Date(),
+    val startDate: Date? = null,
+    val endDate: Date? = null,
     @get:PropertyName("active")
-    val isActive: Boolean = true,
+    val active: Boolean = true,
+    @get:PropertyName("live")
+    val live: Boolean = false,
+    val archivedAt: Date? = null,
     val organizationId: String = "",
     val collectPoints: Boolean = false,
     val maxPointsPerWeekend: Int = 0,
     val centerRefereePoints: Int = 0,
     val assistantRefereePoints: Int = 0,
+    val lunchVoucherAssignedGamesRequired: Int = 0,
+    val lunchVoucherCompletedGamesRequired: Int = 0,
     val divisions: List<Division> = emptyList()
 )

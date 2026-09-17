@@ -22,7 +22,10 @@ data object Profile : NavKey
 data class MatchReport(val gameId: String) : NavKey
 
 @Serializable
-data object AdminDashboard : NavKey
+data class MatchChat(val gameId: String) : NavKey
+
+@Serializable
+data class AdminDashboard(val initialView: Int = 0) : NavKey
 
 @Serializable
 data object SystemAdminDashboard : NavKey
@@ -31,7 +34,13 @@ data object SystemAdminDashboard : NavKey
 data object UserManagement : NavKey
 
 @Serializable
-data object AdminProfile : NavKey
+data object PrintTemplateManagement : NavKey
+
+@Serializable
+data class PrintTemplateCanvas(val templateId: String? = null, val isReadOnly: Boolean = false) : NavKey
+
+@Serializable
+data class AdminProfile(val organizationId: String) : NavKey
 
 @Serializable
 data object TeamManagement : NavKey
@@ -43,7 +52,28 @@ data object DivisionManagement : NavKey
 data object GameScheduler : NavKey
 
 @Serializable
+data object ScheduleImport : NavKey
+
+@Serializable
 data object Laws : NavKey
 
 @Serializable
 data object RefereePoints : NavKey
+
+@Serializable
+data object Onboarding : NavKey
+
+@Serializable
+data class Quiz(val seasonId: String) : NavKey
+
+@Serializable
+data object QuizManagement : NavKey
+
+@Serializable
+data object PrintManagement : NavKey
+
+@Serializable
+data object Inbox : NavKey
+
+@Serializable
+data object MessagingHub : NavKey

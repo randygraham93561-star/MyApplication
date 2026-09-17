@@ -3,7 +3,7 @@ package com.google.refereeschedule.domain.model
 import java.util.Date
 
 enum class AssignmentPosition {
-    HeadReferee, AssistantReferee
+    HeadReferee, AssistantReferee, Mentor
 }
 
 enum class AssignmentStatus {

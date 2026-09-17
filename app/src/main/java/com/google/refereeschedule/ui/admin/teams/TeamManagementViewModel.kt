@@ -47,7 +47,7 @@ class TeamManagementViewModel @Inject constructor(
 
             seasonRepository.getSeasonsForOrganizationFlow(orgId)
                 .onEach { seasons ->
-                    val activeSeason = seasons.find { it.isActive }
+                    val activeSeason = seasons.find { it.active }
                     _uiState.update { it.copy(
                         seasons = seasons,
                         selectedSeason = activeSeason,
@@ -76,7 +76,7 @@ class TeamManagementViewModel @Inject constructor(
         _uiState.update { it.copy(selectedDivision = division) }
     }
 
-    fun addTeam(name: String) {
+    fun addTeam(name: String, gender: String, subDivision: String?, coachEmail: String?) {
         viewModelScope.launch {
             val season = _uiState.value.selectedSeason ?: return@launch
             val division = _uiState.value.selectedDivision ?: return@launch
@@ -85,15 +85,23 @@ class TeamManagementViewModel @Inject constructor(
                 name = name,
                 seasonId = season.id,
                 divisionName = division.name,
+                gender = gender,
+                subDivision = subDivision,
+                coachEmail = coachEmail?.trim()?.lowercase(),
                 organizationId = season.organizationId
             )
             teamRepository.saveTeam(team)
         }
     }
 
-    fun updateTeam(team: Team, newName: String) {
+    fun updateTeam(team: Team, newName: String, newGender: String, newSubDivision: String?, newCoachEmail: String?) {
         viewModelScope.launch {
-            teamRepository.saveTeam(team.copy(name = newName))
+            teamRepository.saveTeam(team.copy(
+                name = newName, 
+                gender = newGender, 
+                subDivision = newSubDivision, 
+                coachEmail = newCoachEmail?.trim()?.lowercase()
+            ))
         }
     }
 

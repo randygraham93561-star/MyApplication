@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.LibraryAdd
@@ -15,15 +16,19 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.google.refereeschedule.domain.model.Assignment
 import com.google.refereeschedule.domain.model.AssignmentPosition
 import com.google.refereeschedule.domain.model.BulkGameData
 import com.google.refereeschedule.domain.model.Division
+import com.google.refereeschedule.domain.model.DivisionDifficulty
 import com.google.refereeschedule.domain.model.Game
 import com.google.refereeschedule.domain.model.Season
 import com.google.refereeschedule.domain.model.Team
 import com.google.refereeschedule.ui.admin.components.SeasonAndDivisionSelectors
+import com.google.refereeschedule.util.TimeUtils
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -31,6 +36,7 @@ import java.util.*
 @Composable
 fun GameSchedulerScreen(
     viewModel: GameSchedulerViewModel,
+    onNavigateToImport: () -> Unit,
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -63,8 +69,14 @@ fun GameSchedulerScreen(
             )
         },
         floatingActionButton = {
-            if (uiState.selectedDivision != null) {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                // 1. Bulk Import (Always available)
+                FloatingActionButton(onClick = { onNavigateToImport() }) {
+                    Icon(Icons.Rounded.CloudUpload, contentDescription = "Import from Sheets")
+                }
+
+                // 2. Contextual Add Buttons (Requires Season/Division selection)
+                if (uiState.selectedDivision != null) {
                     FloatingActionButton(onClick = { 
                         editingGame = null
                         showGameDialog = true 
@@ -81,6 +93,18 @@ fun GameSchedulerScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.padding(padding).padding(16.dp)) {
+            uiState.organization?.logoUrl?.let { logo ->
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    AsyncImage(
+                        model = logo,
+                        contentDescription = "League Logo",
+                        modifier = Modifier.height(60.dp).fillMaxWidth(0.5f),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+            
             SeasonAndDivisionSelectors(
                 seasons = uiState.seasons,
                 selectedSeason = uiState.selectedSeason,
@@ -104,9 +128,9 @@ fun GameSchedulerScreen(
                     Icon(Icons.Rounded.CalendarMonth, contentDescription = null)
                     Column {
                         Text("Selected Date", style = MaterialTheme.typography.labelSmall)
-                        val dateText = remember(uiState.selectedDate) {
+                        val dateText = remember(uiState.selectedDate, uiState.organization) {
                             val sdf = SimpleDateFormat("EEEE, MMM dd, yyyy", Locale.getDefault())
-                            sdf.timeZone = TimeZone.getTimeZone("UTC")
+                            sdf.timeZone = TimeZone.getTimeZone(uiState.organization?.timeZone ?: "UTC")
                             sdf.format(uiState.selectedDate)
                         }
                         Text(
@@ -174,7 +198,7 @@ fun GameSchedulerScreen(
                     showGameDialog = false
                     editingGame = null
                 },
-                onConfirm = { home, away, time, loc, field, friendly ->
+                onConfirm = { home, away, time, loc, field, gender, friendly ->
                     if (editingGame != null) {
                         viewModel.updateGame(editingGame!!.copy(
                             homeTeamName = home.name,
@@ -182,10 +206,12 @@ fun GameSchedulerScreen(
                             time = time,
                             location = loc,
                             fieldNumber = field,
-                            isFriendly = friendly
+                            gender = gender,
+                            isFriendly = friendly,
+                            difficultyLevel = DivisionDifficulty.getLevelForDivision(editingGame!!.divisionName, gender)
                         ))
                     } else {
-                        viewModel.createGame(home, away, time, loc, field, friendly)
+                        viewModel.createGame(home, away, time, loc, field, gender, friendly)
                     }
                     showGameDialog = false
                     editingGame = null
@@ -214,8 +240,8 @@ fun GameSchedulerScreen(
                 teams = uiState.teamsInDivision,
                 division = uiState.selectedDivision!!,
                 onDismiss = { showBulkDialog = false },
-                onConfirm = { games ->
-                    viewModel.createGames(games)
+                onConfirm = { games, gender ->
+                    viewModel.createGames(games, gender)
                     showBulkDialog = false
                 }
             )
@@ -241,6 +267,7 @@ fun GameScheduleItem(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Game #${game.gameNumber}: ${game.homeTeamName} vs ${game.awayTeamName}", style = MaterialTheme.typography.titleSmall)
+                    Text("${game.divisionName} ${game.gender}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
                     Text("Time: ${game.time} @ ${game.location} (Field ${game.fieldNumber})", style = MaterialTheme.typography.bodySmall)
                 }
                 Row {
@@ -311,7 +338,7 @@ fun AssignRefereeDialog(
             onDismissRequest = { showConflictWarning = false },
             title = { Text("Double Booking Warning") },
             text = { 
-                Text("This referee is already assigned to a game at ${conflict.time} (${conflict.homeTeamName} vs ${conflict.awayTeamName}). Are you sure you want to assign them again?")
+                Text("This referee is already assigned to a game at ${TimeUtils.formatTo12h(conflict.time)} (${conflict.homeTeamName} vs ${conflict.awayTeamName}). Are you sure you want to assign them again?")
             },
             confirmButton = {
                 TextButton(
@@ -360,7 +387,7 @@ fun AssignRefereeDialog(
 
                 if (conflict != null) {
                     Text(
-                        "Conflict: Assigned to ${conflict.homeTeamName} @ ${conflict.time}",
+                        "Conflict: Assigned to ${conflict.homeTeamName} @ ${TimeUtils.formatTo12h(conflict.time)}",
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.labelSmall
                     )
@@ -403,13 +430,14 @@ fun AddGameDialog(
     teams: List<Team>,
     division: Division,
     onDismiss: () -> Unit,
-    onConfirm: (Team, Team, String, String, String, Boolean) -> Unit
+    onConfirm: (Team, Team, String, String, String, String, Boolean) -> Unit
 ) {
     var homeTeam by remember(game) { mutableStateOf(teams.find { it.name == game?.homeTeamName }) }
     var awayTeam by remember(game) { mutableStateOf(teams.find { it.name == game?.awayTeamName }) }
-    var time by remember(game) { mutableStateOf(game?.time ?: "10:00 AM") }
+    var time by remember(game) { mutableStateOf(game?.time ?: "10:00") }
     var location by remember(game) { mutableStateOf(game?.location ?: "Main Complex") }
     var fieldNumber by remember(game) { mutableStateOf(game?.fieldNumber ?: "1") }
+    var gender by remember(game) { mutableStateOf(game?.gender ?: "Boys") }
     var isFriendly by remember(game) { mutableStateOf(game?.isFriendly ?: division.isFriendlyByDefault) }
 
     var homeExpanded by remember { mutableStateOf(false) }
@@ -421,13 +449,26 @@ fun AddGameDialog(
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item {
+                    Text("Gender", style = MaterialTheme.typography.labelMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("Boys", "Girls", "Coed").forEach { option ->
+                            FilterChip(
+                                selected = gender == option,
+                                onClick = { gender = option },
+                                label = { Text(option) }
+                            )
+                        }
+                    }
+                }
+                item {
                     // Home Team Dropdown
                     Box {
                         OutlinedButton(onClick = { homeExpanded = true }, modifier = Modifier.fillMaxWidth()) {
-                            Text(homeTeam?.name ?: "Select Home Team")
+                            val filteredTeams = teams.filter { it.gender == gender }
+                            Text(homeTeam?.name ?: "Select Home Team ID")
                         }
                         DropdownMenu(expanded = homeExpanded, onDismissRequest = { homeExpanded = false }) {
-                            teams.forEach { team ->
+                            teams.filter { it.gender == gender }.forEach { team ->
                                 DropdownMenuItem(text = { Text(team.name) }, onClick = { homeTeam = team; homeExpanded = false })
                             }
                         }
@@ -437,17 +478,23 @@ fun AddGameDialog(
                     // Away Team Dropdown
                     Box {
                         OutlinedButton(onClick = { awayExpanded = true }, modifier = Modifier.fillMaxWidth()) {
-                            Text(awayTeam?.name ?: "Select Away Team")
+                            Text(awayTeam?.name ?: "Select Away Team ID")
                         }
                         DropdownMenu(expanded = awayExpanded, onDismissRequest = { awayExpanded = false }) {
-                            teams.forEach { team ->
+                            teams.filter { it.gender == gender }.forEach { team ->
                                 DropdownMenuItem(text = { Text(team.name) }, onClick = { awayTeam = team; awayExpanded = false })
                             }
                         }
                     }
                 }
                 item {
-                    OutlinedTextField(value = time, onValueChange = { time = it }, label = { Text("Time") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(
+                        value = time, 
+                        onValueChange = { time = it }, 
+                        label = { Text("Time (24h)") }, 
+                        placeholder = { Text("14:30") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
                 item {
                     OutlinedTextField(value = location, onValueChange = { location = it }, label = { Text("Location") }, modifier = Modifier.fillMaxWidth())
@@ -468,7 +515,7 @@ fun AddGameDialog(
             TextButton(
                 onClick = { 
                     if (homeTeam != null && awayTeam != null) {
-                        onConfirm(homeTeam!!, awayTeam!!, time, location, fieldNumber, isFriendly)
+                        onConfirm(homeTeam!!, awayTeam!!, time, location, fieldNumber, gender, isFriendly)
                     }
                 },
                 enabled = homeTeam != null && awayTeam != null
@@ -487,9 +534,10 @@ fun BulkAddGamesDialog(
     teams: List<Team>,
     division: Division,
     onDismiss: () -> Unit,
-    onConfirm: (List<BulkGameData>) -> Unit
+    onConfirm: (List<BulkGameData>, String) -> Unit
 ) {
     val gameList = remember { mutableStateListOf<BulkGameInput>() }
+    var gender by remember { mutableStateOf("Boys") }
     
     // Start with one empty row
     if (gameList.isEmpty()) {
@@ -508,6 +556,17 @@ fun BulkAddGamesDialog(
         title = { Text("Bulk Add Games") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxHeight(0.8f)) {
+                Text("Gender", style = MaterialTheme.typography.labelMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Boys", "Girls", "Coed").forEach { option ->
+                        FilterChip(
+                            selected = gender == option,
+                            onClick = { gender = option },
+                            label = { Text(option) }
+                        )
+                    }
+                }
+
                 LazyColumn(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -536,7 +595,7 @@ fun BulkAddGamesDialog(
                                             Text(game.homeTeam?.name ?: "Home", style = MaterialTheme.typography.bodySmall, maxLines = 1)
                                         }
                                         DropdownMenu(expanded = homeExpanded, onDismissRequest = { homeExpanded = false }) {
-                                            teams.forEach { team ->
+                                            teams.filter { it.gender == gender }.forEach { team ->
                                                 DropdownMenuItem(text = { Text(team.name) }, onClick = { 
                                                     gameList[index] = game.copy(homeTeam = team)
                                                     homeExpanded = false 
@@ -550,7 +609,7 @@ fun BulkAddGamesDialog(
                                             Text(game.awayTeam?.name ?: "Away", style = MaterialTheme.typography.bodySmall, maxLines = 1)
                                         }
                                         DropdownMenu(expanded = awayExpanded, onDismissRequest = { awayExpanded = false }) {
-                                            teams.forEach { team ->
+                                            teams.filter { it.gender == gender }.forEach { team ->
                                                 DropdownMenuItem(text = { Text(team.name) }, onClick = { 
                                                     gameList[index] = game.copy(awayTeam = team)
                                                     awayExpanded = false 
@@ -564,7 +623,8 @@ fun BulkAddGamesDialog(
                                     OutlinedTextField(
                                         value = game.time,
                                         onValueChange = { gameList[index] = game.copy(time = it) },
-                                        label = { Text("Time") },
+                                        label = { Text("Time (24h)") },
+                                        placeholder = { Text("14:30") },
                                         modifier = Modifier.weight(1.5f),
                                         textStyle = MaterialTheme.typography.bodySmall
                                     )
@@ -620,7 +680,7 @@ fun BulkAddGamesDialog(
                             fieldNumber = it.fieldNumber,
                             isFriendly = it.isFriendly
                         )
-                    })
+                    }, gender)
                 },
                 enabled = validInputs.isNotEmpty()
             ) {
@@ -636,7 +696,7 @@ fun BulkAddGamesDialog(
 data class BulkGameInput(
     val homeTeam: Team? = null,
     val awayTeam: Team? = null,
-    val time: String = "10:00 AM",
+    val time: String = "10:00",
     val location: String = "Main Complex",
     val fieldNumber: String = "1",
     val isFriendly: Boolean = false

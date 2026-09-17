@@ -7,36 +7,132 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.refereeschedule.domain.model.SubscriptionTier
 import com.google.refereeschedule.domain.model.UserRole
 
 @Composable
 fun AppDrawer(
     userRole: UserRole,
+    activeTier: SubscriptionTier,
+    isSubscriptionExpired: Boolean,
     onNavigateToAdmin: () -> Unit,
-    onNavigateToTeams: () -> Unit,
-    onNavigateToDivisions: () -> Unit,
-    onNavigateToGameScheduler: () -> Unit,
-    onNavigateToRefereePoints: () -> Unit,
     onNavigateToSystemAdmin: () -> Unit,
     onNavigateToUserManagement: () -> Unit,
+    onNavigateToPrintTemplates: () -> Unit,
+    onNavigateToOrgSetup: (() -> Unit)? = null,
+    onNavigateToRefSetup: (() -> Unit)? = null,
+    onNavigateToMatchSetup: (() -> Unit)? = null,
+    onNavigateToPrintSetup: (() -> Unit)? = null,
+    onNavigateToStandings: (() -> Unit)? = null,
+    onNavigateToInbox: () -> Unit,
+    onNavigateToMessagingHub: () -> Unit,
+    onNavigateToProfile: () -> Unit,
     onCloseDrawer: () -> Unit
 ) {
     ModalDrawerSheet {
         Spacer(Modifier.height(12.dp))
         
         Text(
-            "League Information",
+            "My Account",
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(horizontal = 28.dp, vertical = 16.dp)
         )
         NavigationDrawerItem(
-            label = { Text("Referee Points") },
+            label = { Text("My Profile") },
             selected = false,
-            onClick = { onNavigateToRefereePoints(); onCloseDrawer() },
-            icon = { Icon(Icons.Rounded.Star, contentDescription = null) },
+            onClick = { onNavigateToProfile(); onCloseDrawer() },
+            icon = { Icon(Icons.Rounded.Person, contentDescription = null) },
             modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
         )
+
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+        if (userRole != UserRole.SystemAdmin) {
+            Text(
+                "Navigation",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 28.dp, vertical = 16.dp)
+            )
+            NavigationDrawerItem(
+                label = { Text("Main Dashboard") },
+                selected = false,
+                onClick = { onNavigateToAdmin(); onCloseDrawer() },
+                icon = { Icon(Icons.Rounded.Dashboard, contentDescription = null) },
+                modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+            )
+
+            NavigationDrawerItem(
+                label = { Text("Mailbox") },
+                selected = false,
+                onClick = { onNavigateToInbox(); onCloseDrawer() },
+                icon = { Icon(Icons.Rounded.Mail, contentDescription = null) },
+                modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+            )
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        }
+
+        if (userRole == UserRole.Admin || userRole == UserRole.CoachAdmin) {
+            Text(
+                text = "League Management",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 28.dp, vertical = 16.dp)
+            )
+
+            NavigationDrawerItem(
+                label = { Text("Organization Set-up") },
+                selected = false,
+                onClick = { onNavigateToOrgSetup?.invoke(); onCloseDrawer() },
+                icon = { Icon(Icons.Rounded.Settings, contentDescription = null) },
+                modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+            )
+
+            if (userRole == UserRole.Admin) {
+                NavigationDrawerItem(
+                    label = { Text("Messaging Hub") },
+                    selected = false,
+                    onClick = { onNavigateToMessagingHub(); onCloseDrawer() },
+                    icon = { Icon(Icons.Rounded.Campaign, contentDescription = null) },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+
+                NavigationDrawerItem(
+                    label = { Text("Referee Setup") },
+                    selected = false,
+                    onClick = { onNavigateToRefSetup?.invoke(); onCloseDrawer() },
+                    icon = { Icon(Icons.Rounded.People, contentDescription = null) },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+            }
+
+            NavigationDrawerItem(
+                label = { Text("Match Set-up") },
+                selected = false,
+                onClick = { onNavigateToMatchSetup?.invoke(); onCloseDrawer() },
+                icon = { Icon(Icons.Rounded.CalendarMonth, contentDescription = null) },
+                modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+            )
+
+            if (userRole == UserRole.Admin) {
+                NavigationDrawerItem(
+                    label = { Text("Print Set-up") },
+                    selected = false,
+                    onClick = { onNavigateToPrintSetup?.invoke(); onCloseDrawer() },
+                    icon = { Icon(Icons.Rounded.Print, contentDescription = null) },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+            }
+
+            NavigationDrawerItem(
+                label = { Text("League Standings") },
+                selected = false,
+                onClick = { onNavigateToStandings?.invoke(); onCloseDrawer() },
+                icon = { Icon(Icons.Rounded.Star, contentDescription = null) },
+                modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+            )
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        }
 
         if (userRole == UserRole.SystemAdmin) {
             Text(
@@ -58,41 +154,18 @@ fun AppDrawer(
                 icon = { Icon(Icons.Rounded.People, contentDescription = null) },
                 modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
             )
-            HorizontalDivider(Modifier.padding(vertical = 8.dp))
-        }
-
-        if (userRole == UserRole.Admin || userRole == UserRole.SystemAdmin) {
-            Text(
-                "League Admin",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 28.dp, vertical = 16.dp)
-            )
             NavigationDrawerItem(
-                label = { Text("Stats & Seasons") },
+                label = { Text("Messaging Hub") },
                 selected = false,
-                onClick = { onNavigateToAdmin(); onCloseDrawer() },
-                icon = { Icon(Icons.Rounded.Dashboard, contentDescription = null) },
+                onClick = { onNavigateToMessagingHub(); onCloseDrawer() },
+                icon = { Icon(Icons.Rounded.Campaign, contentDescription = null) },
                 modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
             )
             NavigationDrawerItem(
-                label = { Text("Teams") },
+                label = { Text("Design Print Canvas") },
                 selected = false,
-                onClick = { onNavigateToTeams(); onCloseDrawer() },
-                icon = { Icon(Icons.Rounded.People, contentDescription = null) },
-                modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-            )
-            NavigationDrawerItem(
-                label = { Text("Divisions") },
-                selected = false,
-                onClick = { onNavigateToDivisions(); onCloseDrawer() },
-                icon = { Icon(Icons.Rounded.GroupWork, contentDescription = null) },
-                modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-            )
-            NavigationDrawerItem(
-                label = { Text("Scheduler") },
-                selected = false,
-                onClick = { onNavigateToGameScheduler(); onCloseDrawer() },
-                icon = { Icon(Icons.Rounded.CalendarMonth, contentDescription = null) },
+                onClick = { onNavigateToPrintTemplates(); onCloseDrawer() },
+                icon = { Icon(Icons.Rounded.Brush, contentDescription = null) },
                 modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
             )
         }

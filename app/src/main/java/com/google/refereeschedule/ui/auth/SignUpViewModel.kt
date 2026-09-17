@@ -44,7 +44,7 @@ class SignUpViewModel @Inject constructor(
                 val user = User(
                     id = firebaseUser.uid,
                     email = trimmedEmail,
-                    role = role
+                    roles = mapOf("referee" to role.name)
                 )
                 
                 val profile = RefereeProfile(

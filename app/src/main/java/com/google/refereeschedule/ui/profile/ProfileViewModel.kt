@@ -56,20 +56,32 @@ class ProfileViewModel @Inject constructor(
                         profileRepository.getProfileFlow(uid),
                         organizationRepository.getOrganizationsFlow(),
                         seasonRepository.getSeasonsFlow(),
-                        teamRepository.getTeamsFlow()
-                    ) { profile, orgs, allSeasons, allTeams ->
+                        teamRepository.getTeamsFlow(),
+                        userRepository.getUserFlow(uid)
+                    ) { profile, orgs, allSeasons, allTeams, user ->
                         val currentProfile = profile ?: RefereeProfile(
                             id = uid,
                             name = firebaseUser.displayName ?: firebaseUser.email ?: "Referee",
                             badgeLevel = "Regional"
                         )
                         
+                        val role = user?.userRole ?: com.google.refereeschedule.domain.model.UserRole.Referee
+                        val isAdmin = role == com.google.refereeschedule.domain.model.UserRole.Admin || 
+                                     role == com.google.refereeschedule.domain.model.UserRole.SystemAdmin
+
+                        // Standard users ONLY see live seasons
+                        val visibleSeasons = if (isAdmin) {
+                            allSeasons
+                        } else {
+                            allSeasons.filter { it.live || it.id == currentProfile.currentSeasonId }
+                        }
+
                         ProfileUiState.Success(
                             ProfileUiStateData(
                                 profile = currentProfile,
                                 teams = allTeams,
                                 organizations = orgs,
-                                seasons = allSeasons
+                                seasons = visibleSeasons
                             )
                         )
                     }

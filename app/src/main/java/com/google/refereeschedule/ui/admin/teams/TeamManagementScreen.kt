@@ -3,6 +3,7 @@ package com.google.refereeschedule.ui.admin.teams
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
@@ -12,6 +13,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.google.refereeschedule.domain.model.Team
 import com.google.refereeschedule.ui.admin.components.SeasonAndDivisionSelectors
@@ -91,17 +94,18 @@ fun TeamManagementScreen(
         }
 
         if (showAddDialog) {
-            AddTeamDialog(
+            AddTeamManagementDialog(
                 team = editingTeam,
+                initialDivision = uiState.selectedDivision?.name ?: "12U",
                 onDismiss = { 
                     showAddDialog = false
                     editingTeam = null
                 },
-                onConfirm = { name ->
+                onConfirm = { id, _, gen, _, _ ->
                     if (editingTeam != null) {
-                        viewModel.updateTeam(editingTeam!!, name)
+                        viewModel.updateTeam(editingTeam!!, id, gen, null, null)
                     } else {
-                        viewModel.addTeam(name)
+                        viewModel.addTeam(id, gen, null, null)
                     }
                     showAddDialog = false
                     editingTeam = null
@@ -119,7 +123,14 @@ fun TeamItem(team: Team, onEdit: () -> Unit, onDelete: () -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(team.name, style = MaterialTheme.typography.titleMedium)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(team.name, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = team.gender,
+                    style = MaterialTheme.typography.labelSmall, 
+                    color = MaterialTheme.colorScheme.secondary
+                )
+            }
             Row {
                 IconButton(onClick = onEdit) {
                     Icon(Icons.Rounded.Edit, contentDescription = "Edit")
@@ -132,27 +143,90 @@ fun TeamItem(team: Team, onEdit: () -> Unit, onDelete: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddTeamDialog(
+fun AddTeamManagementDialog(
     team: Team? = null,
+    initialDivision: String,
     onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
+    onConfirm: (String, String, String, String?, String?) -> Unit
 ) {
-    var name by remember(team) { mutableStateOf(team?.name ?: "") }
+    var teamNumber by remember(team) { 
+        mutableStateOf(team?.name?.substringAfterLast("-") ?: "") 
+    }
+    var selectedDiv by remember(team) { mutableStateOf(team?.divisionName ?: initialDivision) }
+    var selectedGender by remember(team) { mutableStateOf(team?.gender ?: "Boys") }
+    
+    var divExpanded by remember { mutableStateOf(false) }
+
+    val generatedId = remember(selectedDiv, selectedGender, teamNumber) {
+        if (selectedDiv.isNotEmpty() && selectedGender.isNotEmpty() && teamNumber.isNotEmpty()) {
+            val genChar = selectedGender.first().uppercase()
+            val formattedNum = if (teamNumber.length == 1) "0$teamNumber" else teamNumber
+            "$selectedDiv$genChar-$formattedNum"
+        } else {
+            "----"
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (team != null) "Edit Team" else "Add New Team") },
+        title = { Text(if (team != null) "Edit Team (ID Builder)" else "Add Team (ID Builder)") },
         text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text("Team Name") },
-                modifier = Modifier.fillMaxWidth()
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Preview: $generatedId",
+                        modifier = Modifier.padding(16.dp),
+                        style = MaterialTheme.typography.titleLarge,
+                        textAlign = TextAlign.Center
+                    )
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        OutlinedButton(onClick = { divExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                            Text(selectedDiv)
+                        }
+                        DropdownMenu(expanded = divExpanded, onDismissRequest = { divExpanded = false }) {
+                            val ageGroups = listOf("8U", "10U", "12U", "14U", "16U", "19U")
+                            ageGroups.forEach { age ->
+                                DropdownMenuItem(text = { Text(age) }, onClick = { selectedDiv = age; divExpanded = false })
+                            }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = teamNumber,
+                        onValueChange = { if (it.length <= 2) teamNumber = it.filter { c -> c.isDigit() } },
+                        label = { Text("Number") },
+                        placeholder = { Text("01") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Boys", "Girls", "Coed").forEach { g ->
+                        FilterChip(
+                            selected = selectedGender == g,
+                            onClick = { selectedGender = g },
+                            label = { Text(g) }
+                        )
+                    }
+                }
+            }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(name) }, enabled = name.isNotBlank()) {
+            TextButton(
+                onClick = { 
+                    onConfirm(generatedId, selectedDiv, selectedGender, null, null) 
+                }, 
+                enabled = generatedId != "----"
+            ) {
                 Text(if (team != null) "Save" else "Add")
             }
         },
